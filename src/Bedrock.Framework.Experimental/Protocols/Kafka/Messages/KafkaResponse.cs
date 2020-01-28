@@ -8,6 +8,8 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
 {
     public abstract class KafkaResponse
     {
+        public int CorrelationId { get; set; }
+
         public virtual void ThrowIfError(KafkaErrorCode errorCode)
         {
             if (errorCode != KafkaErrorCode.NONE)

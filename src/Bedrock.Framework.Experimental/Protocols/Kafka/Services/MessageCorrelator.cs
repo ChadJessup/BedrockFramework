@@ -8,6 +8,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 {
@@ -26,8 +27,8 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 
         private int correlationId = 1;
 
-        private readonly ConcurrentDictionary<int, KafkaRequest> correlations
-            = new ConcurrentDictionary<int, KafkaRequest>();
+        private readonly ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse> tcs, KafkaRequest request)> correlations
+            = new ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse>, KafkaRequest)>();
 
         private readonly IServiceProvider services;
         private readonly ILogger<MessageCorrelator> logger;
@@ -43,7 +44,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 
         public bool TryAdd(in int correlationId, in KafkaRequest kafkaRequest)
         {
-            if (this.correlations.TryAdd(correlationId, kafkaRequest))
+            if (this.correlations.TryAdd(correlationId, (new TaskCompletionSource<KafkaResponse>(), kafkaRequest)))
             {
                 this.logger.LogTrace("Added {CorrelationId} for {KafkaRequest}", correlationId, kafkaRequest.GetType().FullName);
 
@@ -57,17 +58,33 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             }
         }
 
-        public bool TryCompleteCorrelation(in int correlationId)
+        public Task<KafkaResponse> GetCorrelationTask(in int correlationId)
+        {
+            if (!this.correlations.TryGetValue(correlationId, out var data))
+            {
+                throw new ArgumentException($"Unknown correlationId: {correlationId}");
+            }
+
+            return data.tcs.Task;
+        }
+
+        public bool TryCompleteCorrelation(in int correlationId, KafkaResponse response)
         {
             if (!this.correlations.ContainsKey(correlationId))
             {
                 throw new ArgumentException($"Unknown correlationId: {correlationId}");
             }
 
-            if (this.correlations.TryRemove(correlationId, out var request))
+            if (response is null)
             {
-                request?.Dispose();
-                return true;
+                throw new ArgumentNullException(nameof(response));
+            }
+
+            if (this.correlations.TryRemove(correlationId, out var correlations))
+            {
+                correlations.request?.Dispose();
+
+                return correlations.tcs.TrySetResult(response);
             }
 
             return false;
@@ -80,7 +97,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
                 throw new ArgumentException($"Unexpected correlationId: {correlationId}", nameof(correlationId));
             }
 
-            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId]);
+            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId].request);
         }
 
         public KafkaResponse CreateEmptyCorrelatedResponse(in KafkaRequest request)

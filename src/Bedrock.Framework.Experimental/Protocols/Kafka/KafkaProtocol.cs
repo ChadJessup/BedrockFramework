@@ -29,6 +29,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             public const string ClientIdNullable = nameof(ClientIdNullable);
             public const string Reader = nameof(Reader);
             public const string Writer = nameof(Writer);
+            public const string ReadTask = nameof(ReadTask);
             public const string ApiVersions = nameof(ApiVersions);
         }
 
@@ -40,51 +41,58 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         private readonly IServiceProvider services;
         private readonly ILogger<KafkaProtocol> logger;
         private readonly IKafkaConnectionManager connectionManager;
+        private readonly IMessageCorrelator correlator;
 
         public KafkaProtocol(
             IServiceProvider serviceProvider,
             ILogger<KafkaProtocol> logger,
             IKafkaConnectionManager connectionManager,
+            IMessageCorrelator correlator,
             KafkaMessageReader reader,
             KafkaMessageWriter writer)
         {
             this.services = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
+            this.correlator = correlator ?? throw new ArgumentNullException(nameof(correlator));
             this.connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
             this.messageReader = reader ?? throw new ArgumentNullException(nameof(reader));
             this.messageWriter = writer ?? throw new ArgumentNullException(nameof(writer));
         }
 
-        public async ValueTask<TResponse> SendAsync<TRequest, TResponse>(ConnectionContext connection, TRequest request, CancellationToken token = default)
+        public async ValueTask<KafkaResponse> SendAsync<TRequest>(ConnectionContext connection, TRequest request, CancellationToken token = default)
             where TRequest : KafkaRequest
-            where TResponse : KafkaResponse
         {
-            if (!this.readerWriters.TryGetValue(connection, out var readerWriter))
-            {
-                throw new ArgumentException("Unable to find connection in manager. Was it registered?", nameof(connection));
-            }
-
-            var (reader, writer) = readerWriter;
+            var writer = (ProtocolWriter)connection.Items[KafkaProtocol.Keys.Writer];
             request.ClientId = (NullableString)connection.Items[KafkaProtocol.Keys.ClientIdNullable];
+            request.CorrelationId = this.correlator.GetCorrelationId(request);
 
             await writer.WriteAsync(this.messageWriter, request, token).ConfigureAwait(false);
 
-            var result = await reader.ReadAsync(this.messageReader, token).ConfigureAwait(false);
+            return await this.correlator.GetCorrelationTask(request.CorrelationId);
+        }
 
-            if (result.IsCompleted)
+        public async Task ReceiveMessages(ConnectionContext connection, CancellationToken token = default)
+        {
+            var reader = (ProtocolReader)connection.Items[KafkaProtocol.Keys.Reader];
+
+            while (!token.IsCancellationRequested)
             {
-                throw new ConnectionAbortedException();
+                var result = await reader.ReadAsync(this.messageReader, token).ConfigureAwait(false);
+                var correlationId = result.Message.CorrelationId;
+
+                if (result.IsCompleted)
+                {
+                    throw new ConnectionAbortedException();
+                }
+
+                if (result.Message is NullResponse)
+                {
+                    throw new InvalidOperationException($"Got back {nameof(NullResponse)}");
+                }
+
+                reader.Advance();
             }
-
-            if (result.Message is NullResponse)
-            {
-                throw new InvalidOperationException($"Got back {nameof(NullResponse)} for {request.GetType().FullName}");
-            }
-
-            reader.Advance();
-
-            return result.Message as TResponse ?? throw new NullReferenceException($"Received invalid response back from KafkaRequest: {request.GetType().FullName}");
         }
 
         public async ValueTask SetClientConnectionAsync(ConnectionContext connection, string clientId)
@@ -110,50 +118,67 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         private async ValueTask StartupConnectionAsync(ConnectionContext connection, CancellationToken token = default)
         {
-            // Send the lowest ApiVersionRequest - this should work for any broker
-            var lowestApiLevels = await this.SendAsync<ApiVersionsRequestV0, ApiVersionsResponseV0>(connection, ApiVersionsRequestV0.AllSupportedApis, token).ConfigureAwait(false);
+            var readTask = this.ReceiveMessages(connection, token);
 
-            Debug.Assert(lowestApiLevels.SupportedApis.Any());
-
-            // Store allowed api messages and their versions on the connection itself.
-            connection.Items.Add(KafkaProtocol.Keys.ApiVersions, lowestApiLevels.SupportedApis);
-
-            this.logger.LogInformation($"{connection.ConnectionId}: Retrieved ApiKeys from {connection.RemoteEndPoint}");
-            if (this.logger.IsEnabled(LogLevel.Debug))
+            connection.Items.Add(KafkaProtocol.Keys.ReadTask, readTask);
+            var count = 0;
+            while (count++ < 100)
             {
-                var sb = new StringBuilder();
-                foreach (var api in lowestApiLevels.SupportedApis)
+                await Task.Delay(100);
+
+                // Send the lowest ApiVersionRequest - this should work for any broker
+                var lowestApiLevels = (ApiVersionsResponseV0)await this.SendAsync(
+                    connection,
+                    ApiVersionsRequestV0.AllSupportedApis,
+                    token)
+                    .ConfigureAwait(false);
+
+                var metadataResponse = (MetadataResponseV0)await this.SendAsync(
+                    connection,
+                    MetadataRequestV0.AllTopics,
+                    token)
+                    .ConfigureAwait(false);
+
+                Debug.Assert(lowestApiLevels.SupportedApis.Any());
+
+                // Store allowed api messages and their versions on the connection itself.
+                // connection.Items.Add(KafkaProtocol.Keys.ApiVersions, lowestApiLevels.SupportedApis);
+
+                this.logger.LogInformation($"{connection.ConnectionId}: Retrieved ApiKeys from {connection.RemoteEndPoint}");
+                if (this.logger.IsEnabled(LogLevel.Debug))
                 {
-                    sb.AppendLine($"{connection.ConnectionId}: {api.ApiKey} Min: {api.MinimumVersion} Max: {api.MaximumVersion}");
+                    var sb = new StringBuilder();
+                    foreach (var api in lowestApiLevels.SupportedApis)
+                    {
+                        sb.AppendLine($"{connection.ConnectionId}: {api.ApiKey} Min: {api.MinimumVersion} Max: {api.MaximumVersion}");
+                    }
+
+                    this.logger.LogDebug(sb.ToString());
                 }
 
-                this.logger.LogDebug(sb.ToString());
+                Debug.Assert(metadataResponse.Brokers.Any());
+                Debug.Assert(metadataResponse.Topics.Any());
+
+                this.logger.LogInformation($"{connection.ConnectionId}: Retrieved Metadata from {connection.RemoteEndPoint}");
+                if (this.logger.IsEnabled(LogLevel.Debug))
+                {
+                    var sb = new StringBuilder(capacity: metadataResponse.Brokers.Length + metadataResponse.Topics.Sum(t => t.Partitions.Length));
+                    foreach (var broker in metadataResponse.Brokers)
+                    {
+                        sb.AppendLine($"{connection.ConnectionId}: Broker: {broker.Host}:{broker.Port}: NodeId: {broker.NodeId}");
+                    }
+
+                    var indent = new string(' ', 4);
+                    foreach (var topic in metadataResponse.Topics)
+                    {
+                        sb.AppendLine($"{indent}{topic.Name}: Partitions: {topic.Partitions.Length}");
+                    }
+
+                    this.logger.LogDebug(sb.ToString());
+
+                    this.logger.LogInformation($"Iteration: {count}");
+                }
             }
-
-            var metadataResponse = await this.SendAsync<MetadataRequestV0, MetadataResponseV0>(
-                connection,
-                MetadataRequestV0.AllTopics)
-                .ConfigureAwait(false);
-
-            Debug.Assert(metadataResponse.Brokers.Any());
-            Debug.Assert(metadataResponse.Topics.Any());
-
-            this.logger.LogInformation($"{connection.ConnectionId}: Retrieved Metadata from {connection.RemoteEndPoint}");
-            if (this.logger.IsEnabled(LogLevel.Debug))
-            {
-                var sb = new StringBuilder(capacity: metadataResponse.Brokers.Length + metadataResponse.Topics.Sum(t => t.Partitions.Length));
-                foreach (var broker in metadataResponse.Brokers)
-                {
-                    sb.AppendLine($"{connection.ConnectionId}: Broker: {broker.Host}:{broker.Port}: NodeId: {broker.NodeId}");
-                }
-
-                var indent = new string(' ', 4);
-                foreach (var topic in metadataResponse.Topics)
-                {
-                    sb.AppendLine($"{indent}{topic.Name}: Partitions: {topic.Partitions.Length}");
-                }
-            }
-
             // TODO: get all brokers, and establish connections for them.
         }
 

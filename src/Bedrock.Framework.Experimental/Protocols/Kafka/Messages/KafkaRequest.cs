@@ -17,6 +17,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
         public KafkaApiKeys ApiKey { get; }
         public short ApiVersion { get; }
 
+        public int CorrelationId { get; set; }
         public NullableString ClientId { get; set; }
 
         public abstract void WriteRequest(ref PayloadWriter writer);
