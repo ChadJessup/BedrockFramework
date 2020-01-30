@@ -11,10 +11,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
     {
         public static string? ReadNullableString(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out short length))
-            {
-                // TODO: do something
-            }
+            var length = reader.ReadInt16BigEndian();
 
             if (length == -1)
             {
@@ -28,11 +25,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         public static string ReadString(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out short length)
-                || length < 0)
-            {
-                // TODO: do something
-            }
+            var length = reader.ReadInt16BigEndian();
 
             if (length == 0)
             {
@@ -50,30 +43,28 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         public static KafkaErrorCode ReadErrorCode(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out short errorCode))
-            {
-                // TODO: do something
-            }
+            var errorCode = reader.ReadInt16BigEndian();
 
             return (KafkaErrorCode)errorCode;
         }
 
         public static short ReadInt16BigEndian(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out short value))
-            {
-                // TODO: do something
-            }
+            reader.TryReadBigEndian(out short value);
+
+            return value;
+        }
+
+        public static short ReadInt16LittleEndian(this ref SequenceReader<byte> reader)
+        {
+            reader.TryReadLittleEndian(out short value);
 
             return value;
         }
 
         public static bool ReadBool(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryRead(out byte value))
-            {
-                // TODO: do something
-            }
+            var value = reader.ReadByte();
 
             // anything other than 0 is true
             return value == 0
@@ -83,10 +74,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         public static byte ReadByte(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryRead(out byte value))
-            {
-                // TODO: do something
-            }
+            reader.TryRead(out byte value);
 
             return value;
         }
@@ -117,22 +105,31 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         public static int ReadInt32BigEndian(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out int value))
-            {
-                // TODO: do something
-            }
+            reader.TryReadBigEndian(out int value);
+
+            return value;
+        }
+
+        public static int ReadInt32LittleEndian(this ref SequenceReader<byte> reader)
+        {
+            reader.TryReadLittleEndian(out int value);
 
             return value;
         }
 
         public static long ReadInt64BigEndian(this ref SequenceReader<byte> reader)
         {
-            if (!reader.TryReadBigEndian(out long value))
-            {
-                // TODO: do something
-            }
+            reader.TryReadBigEndian(out long value);
 
             return value;
         }
+
+        public static long ReadInt64LittleEndian(this ref SequenceReader<byte> reader)
+        {
+            reader.TryReadLittleEndian(out long value);
+
+            return value;
+        }
+
     }
 }
