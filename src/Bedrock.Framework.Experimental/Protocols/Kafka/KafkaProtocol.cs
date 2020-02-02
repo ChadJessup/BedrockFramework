@@ -27,26 +27,26 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
             // Precomputed ClientId as a Kafka Nullable string.
             public const string ClientIdNullable = nameof(ClientIdNullable);
+            public const string ApiVersions = nameof(ApiVersions);
+            public const string ReadTask = nameof(ReadTask);
             public const string Reader = nameof(Reader);
             public const string Writer = nameof(Writer);
-            public const string ReadTask = nameof(ReadTask);
-            public const string ApiVersions = nameof(ApiVersions);
         }
 
         private readonly ConcurrentDictionary<ConnectionContext, (ProtocolReader reader, ProtocolWriter writer)> readerWriters
             = new ConcurrentDictionary<ConnectionContext, (ProtocolReader reader, ProtocolWriter writer)>();
 
+        private readonly IKafkaConnectionManager connectionManager;
         private readonly KafkaMessageReader messageReader;
         private readonly KafkaMessageWriter messageWriter;
-        private readonly IServiceProvider services;
         private readonly ILogger<KafkaProtocol> logger;
-        private readonly IKafkaConnectionManager connectionManager;
         private readonly IMessageCorrelator correlator;
+        private readonly IServiceProvider services;
 
         public KafkaProtocol(
+            IKafkaConnectionManager connectionManager,
             IServiceProvider serviceProvider,
             ILogger<KafkaProtocol> logger,
-            IKafkaConnectionManager connectionManager,
             IMessageCorrelator correlator,
             KafkaMessageReader reader,
             KafkaMessageWriter writer)
@@ -54,8 +54,8 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             this.services = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            this.correlator = correlator ?? throw new ArgumentNullException(nameof(correlator));
             this.connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
+            this.correlator = correlator ?? throw new ArgumentNullException(nameof(correlator));
             this.messageReader = reader ?? throw new ArgumentNullException(nameof(reader));
             this.messageWriter = writer ?? throw new ArgumentNullException(nameof(writer));
         }
