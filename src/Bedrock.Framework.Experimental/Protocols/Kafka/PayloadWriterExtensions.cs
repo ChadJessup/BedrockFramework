@@ -81,5 +81,15 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
             return writer;
         }
+
+        internal static PayloadWriter StartCrc32Calculation(ref this PayloadWriter writer)
+        {
+            return writer;
+        }
+
+        internal static PayloadWriter EndCrc32Calculation(ref this PayloadWriter writer)
+        {
+            return writer;
+        }
     }
 }

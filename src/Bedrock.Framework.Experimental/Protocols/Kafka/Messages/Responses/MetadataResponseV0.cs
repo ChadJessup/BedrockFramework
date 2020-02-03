@@ -27,7 +27,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
             for (int i = 0; i < topicCount; i++)
             {
                 var errorCode = reader.ReadErrorCode();
-                //this.ThrowIfError(errorCode);
+                this.ThrowIfError(errorCode);
 
                 var name = reader.ReadString();
                 var partitions = this.ParsePartitions(ref reader);
