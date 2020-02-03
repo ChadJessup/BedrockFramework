@@ -12,30 +12,22 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
 
         public override void FillResponse(in ReadOnlySequence<byte> response)
         {
-            var reader = new SequenceReader<byte>(response);
+            var reader = new PayloadReader(response, shouldReadBigEndian: true);
 
-            var error = reader.ReadErrorCode();
+            reader.ReadAndThrowOnError(out var _)
+                .ReadArray(out var apiKeys, this.ParseApiKey);
 
-            this.ThrowIfError(error);
+            this.SupportedApis = apiKeys;
+        }
 
-            if (!reader.TryReadBigEndian(out int arraySize)
-                && arraySize != -1)
-            {
-                return;
-            }
+        private KafkaApiKey ParseApiKey(ReadOnlySequence<byte> sequence)
+        {
+            new PayloadReader(sequence, shouldReadBigEndian: true)
+                .Read(out short apiKey)
+                .Read(out short min)
+                .Read(out short max);
 
-            var values = new KafkaApiKey[arraySize];
-
-            for (int i = 0; i < arraySize; i++)
-            {
-                short kafkaApiKey = reader.ReadInt16BigEndian();
-                short min = reader.ReadInt16BigEndian();
-                short max = reader.ReadInt16BigEndian();
-
-                values[i] = new KafkaApiKey((KafkaApiKeys)kafkaApiKey, min, max);
-            }
-
-            this.SupportedApis = values;
+            return new KafkaApiKey((KafkaApiKeys)apiKey, min, max);
         }
     }
 }
