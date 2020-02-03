@@ -15,7 +15,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
         public KafkaMessageReader(IMessageCorrelator messageCorrelator)
         {
-            this.correlations = messageCorrelator;
+            this.correlations = messageCorrelator ?? throw new ArgumentNullException(nameof(messageCorrelator));
         }
 
         public bool TryParseMessage(in ReadOnlySequence<byte> input, ref SequencePosition consumed, ref SequencePosition examined, out KafkaResponse message)
@@ -43,6 +43,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             var payload = reader.Sequence.Slice(reader.Position, reader.Remaining);
 
             var response = this.correlations.CreateEmptyCorrelatedResponse(correlationId);
+            response.CorrelationId = correlationId;
 
             response.FillResponse(payload);
 
@@ -50,7 +51,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             reader.Advance(reader.Remaining);
 
             // Cleanup anything left over from originating request...
-            if (!this.correlations.TryCompleteCorrelation(correlationId))
+            if (!this.correlations.TryCompleteCorrelation(correlationId, response))
             {
                 // TODO: Determine if this can fail...
                 Debug.Assert(false);

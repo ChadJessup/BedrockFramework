@@ -8,10 +8,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Threading.Tasks.Sources;
 
 namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 {
-    public class MessageCorrelator : IMessageCorrelator
+    public class MessageCorrelator : IMessageCorrelator, IValueTaskSource<KafkaResponse>
     {
         // TODO: Move to some form of reflection at startup
         private readonly Dictionary<Type, Type> requestResponseCorrelations
@@ -26,11 +28,12 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 
         private int correlationId = 1;
 
-        private readonly ConcurrentDictionary<int, KafkaRequest> correlations
-            = new ConcurrentDictionary<int, KafkaRequest>();
+        private readonly ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse> tcs, KafkaRequest request)> correlations
+            = new ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse>, KafkaRequest)>();
 
         private readonly IServiceProvider services;
         private readonly ILogger<MessageCorrelator> logger;
+        private readonly ManualResetValueTaskSourceCore<KafkaResponse> vts;
 
         public MessageCorrelator(ILogger<MessageCorrelator> logger, IServiceProvider serviceProvider)
         {
@@ -43,7 +46,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 
         public bool TryAdd(in int correlationId, in KafkaRequest kafkaRequest)
         {
-            if (this.correlations.TryAdd(correlationId, kafkaRequest))
+            if (this.correlations.TryAdd(correlationId, (new TaskCompletionSource<KafkaResponse>(), kafkaRequest)))
             {
                 this.logger.LogTrace("Added {CorrelationId} for {KafkaRequest}", correlationId, kafkaRequest.GetType().FullName);
 
@@ -57,17 +60,33 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             }
         }
 
-        public bool TryCompleteCorrelation(in int correlationId)
+        public Task<KafkaResponse> GetCorrelationTask(in int correlationId)
+        {
+            if (!this.correlations.TryGetValue(correlationId, out var data))
+            {
+                throw new ArgumentException($"Unknown correlationId: {correlationId}");
+            }
+
+            return data.tcs.Task;
+        }
+
+        public bool TryCompleteCorrelation(in int correlationId, KafkaResponse response)
         {
             if (!this.correlations.ContainsKey(correlationId))
             {
                 throw new ArgumentException($"Unknown correlationId: {correlationId}");
             }
 
-            if (this.correlations.TryRemove(correlationId, out var request))
+            if (response is null)
             {
-                request?.Dispose();
-                return true;
+                throw new ArgumentNullException(nameof(response));
+            }
+
+            if (this.correlations.TryRemove(correlationId, out var correlations))
+            {
+                correlations.request?.Dispose();
+
+                return correlations.tcs.TrySetResult(response);
             }
 
             return false;
@@ -80,7 +99,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
                 throw new ArgumentException($"Unexpected correlationId: {correlationId}", nameof(correlationId));
             }
 
-            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId]);
+            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId].request);
         }
 
         public KafkaResponse CreateEmptyCorrelatedResponse(in KafkaRequest request)
@@ -112,35 +131,22 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             return this.correlationId;
         }
 
-        private bool disposedValue = false; // To detect redundant calls
-        protected virtual void Dispose(bool disposing)
+        public KafkaResponse GetResult(short token)
         {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    // TODO: dispose managed state (managed objects).
-                }
-
-                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
-                // TODO: set large fields to null.
-
-                disposedValue = true;
-            }
+            return default;
         }
 
-        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
-        // ~MessageCorrelator()
-        // {
-        //   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-        //   Dispose(false);
-        // }
+        public ValueTaskSourceStatus GetStatus(short token)
+        {
+            return ValueTaskSourceStatus.Pending;
+        }
 
-        // This code added to correctly implement the disposable pattern.
+        public void OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
+        {
+        }
+
         public void Dispose()
         {
-            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
-            Dispose(true);
             GC.SuppressFinalize(this);
         }
     }

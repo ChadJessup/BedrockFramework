@@ -89,6 +89,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             }
 
             this.Context.SizeCalculations.Remove(name);
+
             var currentPosition = this.Context.BytesWritten;
             var size = (int)(currentPosition - calculation.position);
 
@@ -126,7 +127,9 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(short value)
         {
-            var span = this.CurrentWriter.GetSpan(sizeof(short));
+            var span = this.CurrentWriter
+                .GetSpan(sizeof(short))
+                .Slice(0, sizeof(short));
 
             if (this.Context.ShouldWriteBigEndian)
             {
@@ -145,7 +148,10 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(byte value)
         {
-            var span = this.CurrentWriter.GetSpan(sizeof(byte));
+            var span = this.CurrentWriter
+                .GetSpan(sizeof(byte))
+                .Slice(0, sizeof(byte));
+
             span[0] = value;
 
             this.Context.Advance(sizeof(byte));
@@ -156,7 +162,9 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(long value)
         {
-            var span = this.CurrentWriter.GetSpan(sizeof(long));
+            var span = this.CurrentWriter
+                .GetSpan(sizeof(long))
+                .Slice(0, sizeof(long));
 
             if (this.Context.ShouldWriteBigEndian)
             {
@@ -175,7 +183,9 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(int value)
         {
-            var span = this.CurrentWriter.GetSpan(sizeof(int));
+            var span = this.CurrentWriter
+                .GetSpan(sizeof(int))
+                .Slice(0, sizeof(int));
 
             if (this.Context.ShouldWriteBigEndian)
             {
@@ -213,8 +223,13 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
                     continue;
                 }
 
-                var scopedSpan = result.Buffer.Slice(0, this.Context.BytesWritten);
+                if (result.IsCanceled)
+                {
+
+                }
+
                 var output = new byte[this.Context.BytesWritten];
+                var scopedSpan = result.Buffer.Slice(0, this.Context.BytesWritten);
                 scopedSpan.CopyTo(output);
 
                 payload = new ReadOnlySequence<byte>(output);

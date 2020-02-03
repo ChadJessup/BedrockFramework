@@ -3,6 +3,7 @@
 using Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests;
 using Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses;
 using System;
+using System.Threading.Tasks;
 
 namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 {
@@ -10,9 +11,10 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
     {
         bool HasCorrelationId(in int correlationId);
         int GetCorrelationId(in KafkaRequest request);
+        Task<KafkaResponse> GetCorrelationTask(in int correlationId);
 
         bool TryAdd(in int correlationId, in KafkaRequest kafkaRequest);
-        bool TryCompleteCorrelation(in int correlationId);
+        bool TryCompleteCorrelation(in int correlationId, KafkaResponse response);
 
         KafkaResponse CreateEmptyCorrelatedResponse(in KafkaRequest request);
         KafkaResponse CreateEmptyCorrelatedResponse(in int correlationId);
