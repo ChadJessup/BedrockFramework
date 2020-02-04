@@ -27,15 +27,15 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             + sizeof(byte) // include topic auth
             + sizeof(int); // topic array length
 
-        public override int GetPayloadSize()
-        {
-            // Todo: speed this up, we'll traverse each string twice.
-            return constantPayloadSize
-                + (sizeof(short) * (this.Topics?.Length ?? 0)) //  each short saying how long each string is
-                + (this.Topics?.Sum(t => Encoding.UTF8.GetByteCount(t)) ?? 0);
-        }
+        //public override int GetPayloadSize()
+        //{
+        //    // Todo: speed this up, we'll traverse each string twice.
+        //    return constantPayloadSize
+        //        + (sizeof(short) * (this.Topics?.Length ?? 0)) //  each short saying how long each string is
+        //        + (this.Topics?.Sum(t => Encoding.UTF8.GetByteCount(t)) ?? 0);
+        //}
 
-        public override void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
+        public void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
         {
             if (this.Topics == null)
             {
@@ -56,6 +56,11 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             writer.WriteBoolean(this.AllowAutoTopicCreation);
             writer.WriteBoolean(this.IncludeClusterAuthorizedOperations);
             writer.WriteBoolean(this.IncludeTopicAuthorizedOperations);
+        }
+
+        public override void WriteRequest<TStrategy>(ref StrategyPayloadWriter<TStrategy> writer)
+        {
+            throw new NotImplementedException();
         }
     }
 }

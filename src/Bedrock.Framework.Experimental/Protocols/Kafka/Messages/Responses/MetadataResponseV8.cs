@@ -12,7 +12,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
         public Broker[] Brokers { get; private set; } = Array.Empty<Broker>();
         public string? ClusterId { get; private set; }
         public int ControllerId { get; private set; }
-        public MetadataTopic[] Topics { get; private set; } = Array.Empty<MetadataTopic>();
+        public MetadataTopicV8[] Topics { get; private set; } = Array.Empty<MetadataTopicV8>();
         public int ClusterAuthorizedOperations { get; private set; }
 
         public override void FillResponse(in ReadOnlySequence<byte> response)
@@ -28,7 +28,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
             this.ClusterAuthorizedOperations = reader.ReadInt32BigEndian();
         }
 
-        private MetadataTopic[] ParseTopics(ref SequenceReader<byte> reader)
+        private MetadataTopicV8[] ParseTopics(ref SequenceReader<byte> reader)
         {
             // An array of:
             // topics => error_code name is_internal[partitions] topic_authorized_operations
@@ -48,7 +48,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
 
             int arraySize = reader.ReadInt32BigEndian();
 
-            var topics = new MetadataTopic[arraySize];
+            var topics = new MetadataTopicV8[arraySize];
             for (int i = 0; i < arraySize; i++)
             {
                 var errorCode = reader.ReadErrorCode();
@@ -57,7 +57,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
                 var partitions = this.ParsePartitions(ref reader);
                 var topicAuth = reader.ReadInt32BigEndian();
 
-                topics[i] = new MetadataTopic(
+                topics[i] = new MetadataTopicV8(
                      errorCode,
                      name,
                      isInternal,
@@ -68,7 +68,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
             return topics;
         }
 
-        private MetadataPartition[] ParsePartitions(ref SequenceReader<byte> reader)
+        private MetadataPartitionV8[] ParsePartitions(ref SequenceReader<byte> reader)
         {
             // array of partitions:
             // error_code => INT16
@@ -80,7 +80,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
             // offline_replicas => INT32
 
             int arraySize = reader.ReadInt32BigEndian();
-            var partitions = new MetadataPartition[arraySize];
+            var partitions = new MetadataPartitionV8[arraySize];
 
             for (int partIdx = 0; partIdx < arraySize; partIdx++)
             {
@@ -117,7 +117,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
                     offlineReplicas[offlineReplicaIdx] = offReplica;
                 }
 
-                partitions[partIdx] = new MetadataPartition(
+                partitions[partIdx] = new MetadataPartitionV8(
                         errorCode,
                         partitionIndex,
                         leaderId,

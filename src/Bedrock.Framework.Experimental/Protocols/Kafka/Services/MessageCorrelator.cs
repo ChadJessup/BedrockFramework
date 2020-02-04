@@ -32,13 +32,10 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
                 {typeof(ProduceRequestV0),      typeof(ProduceResponseV0) },
             };
 
-        private int correlationId = 1;
+        private short correlationId = 1;
 
-        private readonly ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse> tcs, KafkaRequest request)> correlations
-            = new ConcurrentDictionary<int, (TaskCompletionSource<KafkaResponse>, KafkaRequest)>();
-
-        private readonly ConcurrentDictionary<int, KafkaRequest> correlations
-            = new ConcurrentDictionary<int, KafkaRequest>();
+        private readonly ConcurrentDictionary<short, KafkaRequest> correlations
+            = new ConcurrentDictionary<short, KafkaRequest>();
 
         private readonly IServiceProvider services;
         private readonly ILogger<MessageCorrelator> logger;
@@ -50,12 +47,12 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             this.logger = logger;
         }
 
-        public bool HasCorrelationId(in int correlationId)
+        public bool HasCorrelationId(in short correlationId)
             => this.correlations.ContainsKey(correlationId);
 
-        public bool TryAdd(in int correlationId, in KafkaRequest kafkaRequest)
+        public bool TryAdd(in short correlationId, in KafkaRequest kafkaRequest)
         {
-            if (this.correlations.TryAdd(correlationId, (new TaskCompletionSource<KafkaResponse>(), kafkaRequest)))
+            if (this.correlations.TryAdd(correlationId, kafkaRequest))
             {
                 this.logger.LogTrace("Added {CorrelationId} for {KafkaRequest}", correlationId, kafkaRequest.GetType().FullName);
 
@@ -69,17 +66,17 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             }
         }
 
-        public Task<KafkaResponse> GetCorrelationTask(in int correlationId)
+        public ValueTask<KafkaResponse> GetCorrelationTask(in short correlationId)
         {
             if (!this.correlations.TryGetValue(correlationId, out var data))
             {
                 throw new ArgumentException($"Unknown correlationId: {correlationId}");
             }
 
-            return data.tcs.Task;
+            return new ValueTask<KafkaResponse>(this, correlationId);
         }
 
-        public bool TryCompleteCorrelation(in int correlationId, KafkaResponse response)
+        public bool TryCompleteCorrelation(in short correlationId, KafkaResponse response)
         {
             if (!this.correlations.ContainsKey(correlationId))
             {
@@ -93,22 +90,22 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
 
             if (this.correlations.TryRemove(correlationId, out var correlations))
             {
-                correlations.request?.Dispose();
+                this.vts.SetResult(response);
 
-                return correlations.tcs.TrySetResult(response);
+                return true;
             }
 
             return false;
         }
 
-        public KafkaResponse CreateEmptyCorrelatedResponse(in int correlationId)
+        public KafkaResponse CreateEmptyCorrelatedResponse(in short correlationId)
         {
             if (!this.correlations.ContainsKey(correlationId))
             {
                 throw new ArgumentException($"Unexpected correlationId: {correlationId}", nameof(correlationId));
             }
 
-            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId].request);
+            return this.CreateEmptyCorrelatedResponse(this.correlations[correlationId]);
         }
 
         public KafkaResponse CreateEmptyCorrelatedResponse(in KafkaRequest request)
@@ -128,10 +125,8 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Services
             return response;
         }
 
-        public int GetCorrelationId(in KafkaRequest request)
+        public short GetCorrelationId(in KafkaRequest request)
         {
-            this.correlationId = Interlocked.Increment(ref this.correlationId);
-
             if (!this.TryAdd(this.correlationId, request))
             {
                 throw new InvalidOperationException($"Non-unique correlationId provided in {request.GetType().Name}");

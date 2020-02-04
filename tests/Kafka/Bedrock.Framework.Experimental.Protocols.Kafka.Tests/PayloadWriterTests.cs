@@ -11,7 +11,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Tests
         public void CanWriteInt32BigEndianOnce()
         {
             int testInt = 1337;
-            var pw = new PayloadWriter(shouldWriteBigEndian: true)
+            var pw = new PayloadWriter()
                 .Write(testInt);
 
             Assert.True(pw.TryWritePayload(out var payload));

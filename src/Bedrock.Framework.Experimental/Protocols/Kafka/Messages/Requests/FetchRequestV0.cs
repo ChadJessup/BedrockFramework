@@ -24,13 +24,13 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             + sizeof(int) // min bytes
             + sizeof(int); // topic array count
 
-        public override int GetPayloadSize()
-        {
-            return constantPayloadSize
-                + this.Topics.Sum(t => t.GetSize());
-        }
+        //public override int GetPayloadSize()
+        //{
+            //return constantPayloadSize
+                //+ this.Topics.Sum(t => t.GetSize());
+        //}
 
-        public override void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
+        public void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
         {
             writer.WriteInt32BigEndian(this.ReplicaId);
             writer.WriteInt32BigEndian(this.MaxWaitTime);
@@ -62,6 +62,11 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
                 writer.WriteInt64BigEndian(partition.FetchOffset);
                 writer.WriteInt32BigEndian(partition.PartitionMaxBytes);
             }
+        }
+
+        public override void WriteRequest<TStrategy>(ref StrategyPayloadWriter<TStrategy> writer)
+        {
+            throw new NotImplementedException();
         }
     }
 }

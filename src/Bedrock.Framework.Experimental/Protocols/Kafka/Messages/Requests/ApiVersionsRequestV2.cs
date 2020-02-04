@@ -11,7 +11,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
         {
         }
 
-        public override void WriteRequest(ref BufferWriter<IBufferWriter<byte>> output)
+        public override void WriteRequest<TStrategy>(ref StrategyPayloadWriter<TStrategy> writer)
         {
         }
     }

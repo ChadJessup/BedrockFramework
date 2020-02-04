@@ -15,19 +15,22 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Responses
             var reader = new PayloadReader(response, shouldReadBigEndian: true);
 
             reader.ReadAndThrowOnError(out var _)
-                .ReadArray(out var apiKeys, this.ParseApiKey);
+                .ReadArray<KafkaApiKey>(out var apiKeys, this.ParseApiKey)
+                .Complete();
 
             this.SupportedApis = apiKeys;
         }
 
-        private KafkaApiKey ParseApiKey(ReadOnlySequence<byte> sequence)
+        private ref PayloadReaderContext ParseApiKey(out KafkaApiKey kafkaApiKey, ref PayloadReaderContext context)
         {
-            new PayloadReader(sequence, shouldReadBigEndian: true)
+            context.CreatePayloadReader()
                 .Read(out short apiKey)
                 .Read(out short min)
                 .Read(out short max);
 
-            return new KafkaApiKey((KafkaApiKeys)apiKey, min, max);
+            kafkaApiKey = new KafkaApiKey((KafkaApiKeys)apiKey, min, max);
+
+            return ref context;
         }
     }
 }

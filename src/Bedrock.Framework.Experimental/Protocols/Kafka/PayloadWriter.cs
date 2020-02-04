@@ -12,9 +12,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 {
     public ref struct PayloadWriter
     {
-        public readonly PipeWriter ToParent;
-        public readonly PipeReader FromChild;
-        public readonly PipeWriter CurrentWriter;
+        public readonly PipeWriter Writer;
 
         public PayloadWriterContext Context;
 
@@ -27,11 +25,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         {
             this.Context = settings;
 
-            // Hook up the parent's pipe reader to this writer, and vice-versa.
-            this.ToParent = PipeWriter.Create(this.Context.Pipe.Reader.AsStream());
-            this.FromChild = PipeReader.Create(this.Context.Pipe.Writer.AsStream());
-
-            this.CurrentWriter = this.Context.Pipe.Writer;
+            this.Writer = this.Context.Pipe.Writer;
         }
 
         /// <summary>
@@ -41,15 +35,12 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         public PayloadWriter(bool shouldWriteBigEndian)
         {
             var pipe = new Pipe();
-            this.ToParent = pipe.Writer;
-            this.FromChild = pipe.Reader;
 
             this.Context = new PayloadWriterContext(
                 shouldWriteBigEndian,
                 pipe);
 
-            // Root writer, so route writer to itself.
-            this.CurrentWriter = this.ToParent;
+            this.Writer = this.Context.Pipe.Writer;
         }
 
         /// <summary>
@@ -67,7 +58,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
                 throw new ArgumentException($"Unable to add another size calculation called: {name}", nameof(name));
             }
 
-            var memory = this.CurrentWriter
+            var memory = this.Writer
                 .GetMemory(sizeof(int))
                 .Slice(0, sizeof(int));
 
@@ -110,7 +101,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(ReadOnlySpan<byte> bytes)
         {
-            this.CurrentWriter.Write(bytes);
+            this.Writer.Write(bytes);
             this.Context.Advance(bytes.Length);
 
             return this;
@@ -127,7 +118,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(short value)
         {
-            var span = this.CurrentWriter
+            var span = this.Writer
                 .GetSpan(sizeof(short))
                 .Slice(0, sizeof(short));
 
@@ -148,7 +139,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(byte value)
         {
-            var span = this.CurrentWriter
+            var span = this.Writer
                 .GetSpan(sizeof(byte))
                 .Slice(0, sizeof(byte));
 
@@ -162,7 +153,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(long value)
         {
-            var span = this.CurrentWriter
+            var span = this.Writer
                 .GetSpan(sizeof(long))
                 .Slice(0, sizeof(long));
 
@@ -183,7 +174,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public PayloadWriter Write(int value)
         {
-            var span = this.CurrentWriter
+            var span = this.Writer
                 .GetSpan(sizeof(int))
                 .Slice(0, sizeof(int));
 
@@ -209,7 +200,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
                 throw new InvalidOperationException($"Not all size calculations have been closed. Call {nameof(PayloadWriter.EndSizeCalculation)} for: {string.Join(',', this.Context.SizeCalculations.Keys)}");
             }
 
-            this.CurrentWriter.Complete();
+            this.Writer.Complete();
 
             return this.WriteOutput(out payload);
         }

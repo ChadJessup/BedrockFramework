@@ -3,7 +3,6 @@
 
 using Bedrock.Framework.Experimental.Protocols.Kafka.Models;
 using System;
-using System.Buffers;
 using System.Runtime.CompilerServices;
 
 namespace Bedrock.Framework.Experimental.Protocols.Kafka
@@ -24,13 +23,19 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             return ref reader;
         }
 
-        public static ref PayloadReader ReadArray<TElement>(this ref PayloadReader reader, out TElement[] elements, Func<ReadOnlySequence<byte>, TElement> action)
+        public delegate ref PayloadReaderContext ParseElement<TElement, PayloadReaderContext>(out TElement element, ref PayloadReaderContext context);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ref PayloadReader ReadArray<TElement>(
+            this ref PayloadReader reader,
+            out TElement[] elements,
+            ParseElement<TElement, PayloadReaderContext> action)
         {
             reader.Read(out int arraySize);
 
             if (arraySize == -1)
             {
                 elements = Array.Empty<TElement>();
+
                 return ref reader;
             }
 
@@ -38,7 +43,10 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
 
             for (int i = 0; i < arraySize; i++)
             {
-                elements[i] = action(reader.ReadOnlySequence.Slice(reader.BytesRead));
+                var modifiedContext = action(out TElement element, ref reader.Context);
+                elements[i] = element;
+
+                reader.Context = modifiedContext;
             }
 
             return ref reader;

@@ -68,8 +68,9 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
             request.CorrelationId = this.correlator.GetCorrelationId(request);
 
             await writer.WriteAsync(this.messageWriter, request, token).ConfigureAwait(false);
+            var task = this.correlator.GetCorrelationTask((short)request.CorrelationId);
 
-            return await this.correlator.GetCorrelationTask(request.CorrelationId);
+            return await task;
         }
 
         public async Task ReceiveMessages(ConnectionContext connection, CancellationToken token = default)

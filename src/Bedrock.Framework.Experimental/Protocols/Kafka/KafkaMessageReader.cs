@@ -34,21 +34,29 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
                 return false;
             }
 
-            if (!reader.TryReadBigEndian(out int correlationId)
-                || !this.correlations.HasCorrelationId(correlationId))
+            if (!reader.TryReadBigEndian(out int kafkaCorrelationId))
             {
                 return false;
             }
 
-            var payload = reader.Sequence.Slice(reader.Position, reader.Remaining);
+            // subtract correlation id int from total messagesize
+            messageSize -= sizeof(int);
+
+            var correlationId = (short)kafkaCorrelationId;
+
+            if (!this.correlations.HasCorrelationId(correlationId))
+            {
+                return false;
+            }
+
+            var payload = reader.Sequence.Slice(reader.Position, messageSize);
 
             var response = this.correlations.CreateEmptyCorrelatedResponse(correlationId);
             response.CorrelationId = correlationId;
 
             response.FillResponse(payload);
 
-            // extend sequencereader to remaining length so the next frame is setup correctly.
-            reader.Advance(reader.Remaining);
+            reader.Advance(messageSize);
 
             // Cleanup anything left over from originating request...
             if (!this.correlations.TryCompleteCorrelation(correlationId, response))

@@ -56,17 +56,17 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             + sizeof(int) // value length size
             + 14;
 
-        public override int GetPayloadSize()
-        {
-            return constantPayloadsize
-                + this.Topics.Sum(t => t.TopicName.Length)
-                + (this.keyLength ?? 0)
-                + (this.valueLength ?? 0);
-        }
+        //public override int GetPayloadSize()
+        //{
+            //return constantPayloadsize
+                //+ this.Topics.Sum(t => t.TopicName.Length)
+                //+ (this.keyLength ?? 0)
+                //+ (this.valueLength ?? 0);
+        //}
 
-        public override void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
+        public void WriteRequest(ref BufferWriter<IBufferWriter<byte>> writer)
         {
-            var pw = new PayloadWriter(isBigEndian: true)
+            var pw = new PayloadWriter(shouldWriteBigEndian: true)
                 .Write(this.Acks)
                 .Write(this.Timeout)
                 .WriteArray(this.Topics, this.WriteTopic);
@@ -77,26 +77,29 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             }
         }
 
-        private void WriteTopic(TopicPartitions topic, PayloadWriterContext settings)
+        private PayloadWriterContext WriteTopic(TopicPartitions topic, PayloadWriterContext settings)
         {
             var pw = settings.CreatePayloadWriter()
                 .WriteString(topic.TopicName)
                 .WriteArray(topic.Partitions, this.WritePartition);
+
+            return pw.Context;
         }
 
-        private void WritePartition(Partition partition, PayloadWriterContext settings)
+        private PayloadWriterContext WritePartition(Partition partition, PayloadWriterContext settings)
         {
             var pw = settings.CreatePayloadWriter()
                 .Write(partition.Index)
                 .Write(this.WriteMessageSetV2);
 
+            return pw.Context;
         }
 
         private void WriteMessageSetV2(PayloadWriterContext settings)
         {
             var pw = settings.CreatePayloadWriter()
                 .StartCalculatingSize("messageSetSize")
-                .Write(this.WriteMessagesV2)
+                    .Write(this.WriteMessagesV2)
                 .EndSizeCalculation("messageSetSize");
         }
 
@@ -192,6 +195,11 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka.Messages.Requests
             {
                 ArrayPool<byte>.Shared.Return(this.Value);
             }
+        }
+
+        public override void WriteRequest<TStrategy>(ref StrategyPayloadWriter<TStrategy> writer)
+        {
+            throw new NotImplementedException();
         }
     }
 }

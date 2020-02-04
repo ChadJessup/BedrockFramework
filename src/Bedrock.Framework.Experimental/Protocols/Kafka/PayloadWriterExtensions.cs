@@ -36,7 +36,7 @@ namespace Bedrock.Framework.Experimental.Protocols.Kafka
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static PayloadWriter WriteBytes(this PayloadWriter writer, ref ReadOnlySpan<byte> bytes)
         {
-            writer.CurrentWriter.Write(bytes);
+            writer.Writer.Write(bytes);
 
             return writer;
         }
